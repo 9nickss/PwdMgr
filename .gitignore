@@ -27,5 +27,4 @@ docker-compose.override.yml
 __pycache__
 *.pyc
 
-# Keep ISSUES.md
-!ISSUES.md
+ISSUES.md
