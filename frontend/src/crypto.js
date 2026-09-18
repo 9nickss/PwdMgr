@@ -72,3 +72,81 @@ export async function splitMasterKey(masterKey, salt) {
   );
   return { localKey, authKey };
 }
+
+export async function generateVaultKey() {
+  return await crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+}
+
+export async function encryptEntry(plaintextObject, vaultKey) {
+  const encoder = new TextEncoder();
+  const plaintext = encoder.encode(JSON.stringify(plaintextObject));
+  const iv = await crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv: iv
+    },
+    vaultKey,
+    plaintext
+  );
+  return {
+    iv: Array.from(new Uint8Array(iv)),
+    ciphertext: Array.from(new Uint8Array(ciphertext))
+  };
+}
+
+export async function decryptEntry(encryptedObject, vaultKey) {
+  const iv = new Uint8Array(encryptedObject.iv);
+  const ciphertext = new Uint8Array(encryptedObject.ciphertext);
+  const plaintext = await crypto.subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv: iv
+    },
+    vaultKey,
+    ciphertext
+  );
+  const decoder = new TextDecoder();
+  return JSON.parse(decoder.decode(plaintext));
+}
+
+export async function wrapKey(vaultKey, localKey) {
+  const vaultKeyBytes = await exportRawKey(vaultKey);
+  const iv = await crypto.getRandomValues(new Uint8Array(12));
+  const wrappedKey = await crypto.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv: iv
+    },
+    localKey,
+    vaultKeyBytes
+  );
+  return {
+    iv: Array.from(new Uint8Array(iv)),
+    wrappedKey: Array.from(new Uint8Array(wrappedKey))
+  };
+}
+
+export async function unwrapKey(wrappedObject, localKey) {
+  const iv = new Uint8Array(wrappedObject.iv);
+  const wrappedKey = new Uint8Array(wrappedObject.wrappedKey);
+  const vaultKeyBytes = await crypto.subtle.decrypt(
+    {
+      name: 'AES-GCM',
+      iv: iv
+    },
+    localKey,
+    wrappedKey
+  );
+  return await crypto.subtle.importKey(
+    'raw',
+    vaultKeyBytes,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+}
