@@ -4,7 +4,13 @@ import assert from 'node:assert/strict';
 import {
   encryptEntry,
   decryptEntry,
-  generateVaultKey
+  generateVaultKey,
+  wrapKey,
+  unwrapKey,
+  deriveMasterKey,
+  generateSalt,
+  splitMasterKey,
+  exportRawKey
 } from './crypto.js';
 
 test('encryptEntry/decryptEntry round-trip should preserve JSON payload and validate integrity', async () => {
@@ -33,4 +39,29 @@ test('encryptEntry/decryptEntry round-trip should preserve JSON payload and vali
   };
 
   await assert.rejects(() => decryptEntry(tampered, vaultKey), /OperationError|Integrity|Authentication|decrypt/);
+});
+
+test('wrapKey/unwrapKey should protect and restore the Vault Key', async () => {
+  const vaultKey = await generateVaultKey();
+  const salt = await generateSalt();
+  const masterKey = await deriveMasterKey('master-password', salt, 1);
+  const { localKey } = await splitMasterKey(masterKey, salt);
+  const wrongMasterKey = await deriveMasterKey('wrong-password', salt, 1);
+  const { localKey: wrongLocalKey } = await splitMasterKey(wrongMasterKey, salt);
+  const originalVaultKeyBytes = Array.from(await exportRawKey(vaultKey));
+
+  const wrappedVaultKey = await wrapKey(vaultKey, localKey);
+  const restoredVaultKey = await unwrapKey(wrappedVaultKey, localKey);
+
+  assert.ok(Array.isArray(wrappedVaultKey.iv));
+  assert.ok(Array.isArray(wrappedVaultKey.wrappedKey));
+  assert.notDeepStrictEqual(wrappedVaultKey.wrappedKey, originalVaultKeyBytes);
+  assert.deepStrictEqual(
+    Array.from(await exportRawKey(restoredVaultKey)),
+    originalVaultKeyBytes
+  );
+  await assert.rejects(
+    () => unwrapKey(wrappedVaultKey, wrongLocalKey),
+    /OperationError|decrypt/
+  );
 });
