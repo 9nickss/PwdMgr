@@ -41,6 +41,28 @@ test('encryptEntry/decryptEntry round-trip should preserve JSON payload and vali
   await assert.rejects(() => decryptEntry(tampered, vaultKey), /OperationError|Integrity|Authentication|decrypt/);
 });
 
+test('encryptEntry should produce different IVs for the same payload', async () => {
+  const vaultKey = await generateVaultKey();
+  const payload = { title: 'GitHub', username: 'alice', password: 'secret' };
+
+  const firstEncryption = await encryptEntry(payload, vaultKey);
+  const secondEncryption = await encryptEntry(payload, vaultKey);
+
+  assert.notDeepStrictEqual(firstEncryption.iv, secondEncryption.iv);
+  assert.notDeepStrictEqual(firstEncryption.ciphertext, secondEncryption.ciphertext);
+});
+
+test('decryptEntry should reject a blob encrypted with another Vault Key', async () => {
+  const vaultKey = await generateVaultKey();
+  const otherVaultKey = await generateVaultKey();
+  const encrypted = await encryptEntry({ title: 'GitHub' }, vaultKey);
+
+  await assert.rejects(
+    () => decryptEntry(encrypted, otherVaultKey),
+    /OperationError|decrypt/
+  );
+});
+
 test('wrapKey/unwrapKey should protect and restore the Vault Key', async () => {
   const vaultKey = await generateVaultKey();
   const salt = await generateSalt();
