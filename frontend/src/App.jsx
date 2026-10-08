@@ -140,6 +140,18 @@ async function saveVaultItem(token, payload, itemId) {
   return result.item;
 }
 
+async function deleteVaultItem(token, itemId) {
+  const response = await fetch(`${apiBaseUrl}/vault/${itemId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.error || 'Unable to delete the vault entry');
+  }
+}
+
 function EntryForm({ entry, isSaving, onCancel, onSave }) {
   const [form, setForm] = useState({
     title: entry?.payload?.title || '',
@@ -183,8 +195,17 @@ function EntryForm({ entry, isSaving, onCancel, onSave }) {
   );
 }
 
-function VaultView({ items, onLogout, onSave, isSaving }) {
+function VaultView({ items, onLogout, onSave, onDelete, isSaving }) {
   const [editingItem, setEditingItem] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [visibleCredentials, setVisibleCredentials] = useState({});
+
+  function toggleCredentials(itemId) {
+    setVisibleCredentials((current) => ({
+      ...current,
+      [itemId]: !current[itemId]
+    }));
+  }
 
   return (
     <main className="auth-page">
@@ -199,6 +220,7 @@ function VaultView({ items, onLogout, onSave, isSaving }) {
         <button type="button" className="new-entry-button" onClick={() => setEditingItem(null)}>
           + Nouvelle entrée
         </button>
+        {deleteError && <p className="status error" role="alert">{deleteError}</p>}
 
         {editingItem !== false && (
           <EntryForm
@@ -226,16 +248,51 @@ function VaultView({ items, onLogout, onSave, isSaving }) {
                     <h3>{item.payload.title || 'Entrée sans titre'}</h3>
                     <dl>
                       <dt>Identifiant</dt>
-                      <dd>{item.payload.username || 'Non renseigné'}</dd>
+                      <dd>
+                        {visibleCredentials[item.id]
+                          ? (item.payload.username || 'Non renseigné')
+                          : '••••••••'}
+                      </dd>
                       <dt>Mot de passe</dt>
-                      <dd>{item.payload.password || 'Non renseigné'}</dd>
+                      <dd>
+                        {visibleCredentials[item.id]
+                          ? (item.payload.password || 'Non renseigné')
+                          : '••••••••'}
+                      </dd>
                     </dl>
                     {item.payload.notes && <p>{item.payload.notes}</p>}
-                    <button type="button" className="secondary-button" onClick={() => setEditingItem(item)}>
-                      Modifier
+                    <button
+                      type="button"
+                      className="secondary-button credentials-button"
+                      onClick={() => toggleCredentials(item.id)}
+                    >
+                      {visibleCredentials[item.id] ? 'Masquer les identifiants' : 'Afficher les identifiants'}
                     </button>
                   </>
                 )}
+                {!item.decryptError && (
+                  <button type="button" className="secondary-button" onClick={() => setEditingItem(item)}>
+                    Modifier
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="delete-button"
+                  onClick={async () => {
+                    if (!window.confirm('Supprimer définitivement cette entrée ?')) {
+                      return;
+                    }
+                    setDeleteError('');
+                    try {
+                      await onDelete(item.id);
+                    } catch (error) {
+                      setDeleteError(error.message);
+                    }
+                  }}
+                  disabled={isSaving}
+                >
+                  Supprimer
+                </button>
               </article>
             ))}
           </section>
@@ -307,6 +364,15 @@ function App() {
             setVaultItems(refreshedItems.map((current) => (
               current.id === item.id ? { ...current, payload: data, decryptError: false } : current
             )));
+          } finally {
+            setIsSubmitting(false);
+          }
+        }}
+        onDelete={async (itemId) => {
+          setIsSubmitting(true);
+          try {
+            await deleteVaultItem(session.token, itemId);
+            setVaultItems((current) => current.filter((item) => item.id !== itemId));
           } finally {
             setIsSubmitting(false);
           }

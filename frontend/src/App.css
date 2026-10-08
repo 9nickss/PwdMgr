@@ -255,6 +255,22 @@ textarea:focus {
   color: #173b32;
 }
 
+.delete-button {
+  min-height: 36px;
+  margin-top: 16px;
+  margin-left: 8px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid #a14e3f;
+  color: #76392e;
+  font-size: 0.8rem;
+}
+
+.delete-button:hover:not(:disabled) {
+  background: #f7e8e3;
+  color: #5e2c24;
+}
+
 .logout-button {
   min-height: 38px;
   margin-top: 0;
@@ -330,6 +346,12 @@ textarea:focus {
   margin-top: 16px;
   padding: 0 12px;
   font-size: 0.8rem;
+}
+
+.vault-item .credentials-button {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
 }
 
 .vault-item .status {
