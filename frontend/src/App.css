@@ -41,6 +41,29 @@ body {
   text-transform: uppercase;
 }
 
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 30px;
+  padding: 4px;
+  background: #e8f0ed;
+}
+
+.mode-button {
+  min-height: 40px;
+  margin: 0;
+  background: transparent;
+  color: #39705c;
+  font-size: 0.8rem;
+}
+
+.mode-button:hover:not(:disabled),
+.mode-button.active {
+  background: #235746;
+  color: #fffdf8;
+}
+
 h1 {
   margin: 0;
   color: #173b32;
@@ -129,6 +152,34 @@ button:disabled {
   border-color: #a14e3f;
   background: #f7e8e3;
   color: #76392e;
+}
+
+.recovery-box {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px dashed #a14e3f;
+  background: #fff5e8;
+  color: #513c2b;
+  font-family: 'Trebuchet MS', sans-serif;
+}
+
+.recovery-box strong {
+  color: #76392e;
+  font-size: 0.85rem;
+}
+
+.recovery-box p {
+  margin: 12px 0;
+  color: #35291f;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.recovery-box small {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 @media (max-width: 520px) {
