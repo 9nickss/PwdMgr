@@ -199,6 +199,62 @@ button:disabled {
   margin-bottom: 18px;
 }
 
+.new-entry-button {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.entry-form {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #c4d1c9;
+  background: #f7faf6;
+}
+
+.entry-form h2 {
+  margin: 0 0 14px;
+  color: #173b32;
+  font-size: 1.35rem;
+  font-weight: 500;
+}
+
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #aebeb6;
+  border-radius: 2px;
+  resize: vertical;
+  color: #1f2933;
+  font: inherit;
+  font-family: 'Trebuchet MS', sans-serif;
+  font-size: 1rem;
+}
+
+textarea:focus {
+  outline: 3px solid #c0d9cc;
+  border-color: #39705c;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.entry-actions button {
+  flex: 1;
+}
+
+.secondary-button {
+  background: transparent;
+  border: 1px solid #39705c;
+  color: #235746;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #e8f0ed;
+  color: #173b32;
+}
+
 .logout-button {
   min-height: 38px;
   margin-top: 0;
@@ -267,6 +323,13 @@ button:disabled {
   margin: 14px 0 0;
   color: #53645d;
   line-height: 1.5;
+}
+
+.vault-item .secondary-button {
+  min-height: 36px;
+  margin-top: 16px;
+  padding: 0 12px;
+  font-size: 0.8rem;
 }
 
 .vault-item .status {

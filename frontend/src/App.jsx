@@ -3,9 +3,12 @@ import {
   decryptEntry,
   deriveMasterKey,
   exportRawKey,
+  encryptEntry,
   generateSalt,
+  generateVaultKey,
   splitMasterKey,
-  unwrapKey
+  unwrapKey,
+  wrapKey
 } from './crypto';
 import './App.css';
 
@@ -113,7 +116,76 @@ async function fetchVaultItems(token, localKey) {
   }));
 }
 
-function VaultView({ items, onLogout }) {
+async function saveVaultItem(token, payload, itemId) {
+  const vaultKey = await generateVaultKey();
+  const encryptedBlob = await encryptEntry(payload.data, vaultKey);
+  const wrappedKey = await wrapKey(vaultKey, payload.localKey);
+  const response = await fetch(`${apiBaseUrl}/vault${itemId ? `/${itemId}` : ''}`, {
+    method: itemId ? 'PUT' : 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      encryptedBlob: JSON.stringify(encryptedBlob),
+      nonce: JSON.stringify(encryptedBlob.iv),
+      tag: JSON.stringify(encryptedBlob.ciphertext.slice(-16)),
+      vaultKeyWrapped: JSON.stringify(wrappedKey)
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || 'Unable to save the vault entry');
+  }
+  return result.item;
+}
+
+function EntryForm({ entry, isSaving, onCancel, onSave }) {
+  const [form, setForm] = useState({
+    title: entry?.payload?.title || '',
+    username: entry?.payload?.username || '',
+    password: entry?.payload?.password || '',
+    notes: entry?.payload?.notes || ''
+  });
+  const [error, setError] = useState('');
+
+  function updateField(event) {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    try {
+      await onSave(form);
+    } catch (saveError) {
+      setError(saveError.message);
+    }
+  }
+
+  return (
+    <form className="entry-form" onSubmit={handleSubmit}>
+      <h2>{entry ? 'Modifier une entrée' : 'Ajouter une entrée'}</h2>
+      <label htmlFor="entry-title">Titre</label>
+      <input id="entry-title" name="title" value={form.title} onChange={updateField} required />
+      <label htmlFor="entry-username">Identifiant</label>
+      <input id="entry-username" name="username" value={form.username} onChange={updateField} />
+      <label htmlFor="entry-password">Mot de passe</label>
+      <input id="entry-password" name="password" type="password" value={form.password} onChange={updateField} />
+      <label htmlFor="entry-notes">Notes</label>
+      <textarea id="entry-notes" name="notes" value={form.notes} onChange={updateField} rows="4" />
+      {error && <p className="status error" role="alert">{error}</p>}
+      <div className="entry-actions">
+        <button type="submit" disabled={isSaving}>{isSaving ? 'Chiffrement...' : 'Enregistrer'}</button>
+        <button type="button" className="secondary-button" onClick={onCancel} disabled={isSaving}>Annuler</button>
+      </div>
+    </form>
+  );
+}
+
+function VaultView({ items, onLogout, onSave, isSaving }) {
+  const [editingItem, setEditingItem] = useState(false);
+
   return (
     <main className="auth-page">
       <section className="auth-panel vault-panel" aria-labelledby="vault-title">
@@ -124,11 +196,27 @@ function VaultView({ items, onLogout }) {
           </div>
           <button type="button" className="logout-button" onClick={onLogout}>Se déconnecter</button>
         </div>
+        <button type="button" className="new-entry-button" onClick={() => setEditingItem(null)}>
+          + Nouvelle entrée
+        </button>
+
+        {editingItem !== false && (
+          <EntryForm
+            entry={editingItem}
+            isSaving={isSaving}
+            onCancel={() => setEditingItem(false)}
+            onSave={async (data) => {
+              await onSave(data, editingItem?.id);
+              setEditingItem(false);
+            }}
+          />
+        )}
 
         {items.length === 0 ? (
           <p className="empty-vault">Votre coffre est vide pour le moment.</p>
         ) : (
           <section className="vault-list" aria-label="Entrées du coffre">
+            <h2>Entrées enregistrées</h2>
             {items.map((item) => (
               <article className="vault-item" key={item.id}>
                 {item.decryptError ? (
@@ -143,6 +231,9 @@ function VaultView({ items, onLogout }) {
                       <dd>{item.payload.password || 'Non renseigné'}</dd>
                     </dl>
                     {item.payload.notes && <p>{item.payload.notes}</p>}
+                    <button type="button" className="secondary-button" onClick={() => setEditingItem(item)}>
+                      Modifier
+                    </button>
                   </>
                 )}
               </article>
@@ -162,6 +253,7 @@ function App() {
   const [recoveryPhrase, setRecoveryPhrase] = useState('');
   const [vaultItems, setVaultItems] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [session, setSession] = useState(null);
   const [status, setStatus] = useState({ type: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -185,6 +277,7 @@ function App() {
         const { token, localKey } = await loginUser(normalizedEmail, password);
         localStorage.setItem('securevault_token', token);
         setVaultItems(await fetchVaultItems(token, localKey));
+        setSession({ token, localKey });
         setIsAuthenticated(true);
         setStatus({ type: 'success', message: 'Connexion réussie.' });
       }
@@ -201,9 +294,27 @@ function App() {
     return (
       <VaultView
         items={vaultItems}
+        isSaving={isSubmitting}
+        onSave={async (data, itemId) => {
+          setIsSubmitting(true);
+          try {
+            const item = await saveVaultItem(
+              session.token,
+              { data, localKey: session.localKey },
+              itemId
+            );
+            const refreshedItems = await fetchVaultItems(session.token, session.localKey);
+            setVaultItems(refreshedItems.map((current) => (
+              current.id === item.id ? { ...current, payload: data, decryptError: false } : current
+            )));
+          } finally {
+            setIsSubmitting(false);
+          }
+        }}
         onLogout={() => {
           localStorage.removeItem('securevault_token');
           setVaultItems([]);
+          setSession(null);
           setIsAuthenticated(false);
           setMode('login');
         }}
