@@ -18,6 +18,7 @@
     "@peculiar/webcrypto": "^1.7.1",
     "@vitejs/plugin-react": "^4.0.0",
     "eslint": "^8.45.0",
+    "eslint-plugin-react": "^7.37.5",
     "vite": "^4.4.0"
   }
 }

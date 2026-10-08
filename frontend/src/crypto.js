@@ -40,7 +40,7 @@ export async function importRawKey(keyBytes, algorithm = { name: 'HKDF' }) {
   );
 }
 
-export async function deriveHkdfKey(sharedSecret, salt, info, keyLength) {
+export async function deriveHkdfKey(sharedSecret, salt, info, keyLength, extractable = false) {
   return await crypto.subtle.deriveKey(
     {
       name: 'HKDF',
@@ -50,7 +50,7 @@ export async function deriveHkdfKey(sharedSecret, salt, info, keyLength) {
     },
     sharedSecret,
     { name: 'AES-GCM', length: keyLength * 8 },
-    false,
+    extractable,
     ['encrypt', 'decrypt']
   );
 }
@@ -68,7 +68,8 @@ export async function splitMasterKey(masterKey, salt) {
     sharedSecret,
     salt,
     'VaultMgr-AuthKey',
-    32
+    32,
+    true
   );
   return { localKey, authKey };
 }

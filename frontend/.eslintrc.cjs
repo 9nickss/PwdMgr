@@ -1,4 +1,5 @@
 module.exports = {
+  ignorePatterns: ['dist/'],
   env: {
     browser: true,
     es2022: true,
@@ -18,6 +19,12 @@ module.exports = {
   plugins: [
     'react',
   ],
+  settings: {
+    react: {
+      version: 'detect',
+    },
+  },
   rules: {
+    'react/react-in-jsx-scope': 'off',
   },
 };
