@@ -1,9 +1,11 @@
 const crypto = require('crypto');
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
 
 const app = express();
 const port = process.env.PORT || 3000;
+const jwtSecret = process.env.JWT_SECRET || 'securevault-development-secret';
 const pool = new Pool({
   host: process.env.PGHOST || 'localhost',
   port: process.env.PGPORT || 5432,
@@ -27,6 +29,31 @@ function hashAuthProof(authHash) {
         return;
       }
       resolve(`scrypt$${salt.toString('base64')}$${derivedKey.toString('base64')}`);
+    });
+  });
+}
+
+function verifyAuthProof(authHash, storedHash) {
+  return new Promise((resolve, reject) => {
+    const [algorithm, saltBase64, hashBase64] = String(storedHash).split('$');
+
+    if (algorithm !== 'scrypt' || !saltBase64 || !hashBase64) {
+      resolve(false);
+      return;
+    }
+
+    const salt = Buffer.from(saltBase64, 'base64');
+    const expectedHash = Buffer.from(hashBase64, 'base64');
+    crypto.scrypt(authHash, salt, expectedHash.length, (error, derivedHash) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(
+        derivedHash.length === expectedHash.length &&
+        crypto.timingSafeEqual(derivedHash, expectedHash)
+      );
     });
   });
 }
@@ -93,6 +120,46 @@ app.post('/auth/register', async (req, res) => {
     }
 
     console.error('Failed to register user:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/auth/login', async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const { email: rawEmail, authHash } = body;
+  const email = normalizeEmail(rawEmail);
+
+  if ('password' in body || 'masterPassword' in body) {
+    res.status(400).json({ error: 'The master password must not be sent' });
+    return;
+  }
+
+  if (!email || typeof authHash !== 'string' || !authHash) {
+    res.status(400).json({ error: 'email and authHash are required' });
+    return;
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT id, email, auth_hash FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (result.rowCount === 0 || !(await verifyAuthProof(authHash, result.rows[0].auth_hash))) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+
+    const user = result.rows[0];
+    const token = jwt.sign(
+      { sub: user.id, email: user.email },
+      jwtSecret,
+      { expiresIn: '1h' }
+    );
+
+    res.json({ token });
+  } catch (error) {
+    console.error('Failed to log in user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
