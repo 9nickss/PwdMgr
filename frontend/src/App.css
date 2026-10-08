@@ -182,6 +182,97 @@ button:disabled {
   line-height: 1.4;
 }
 
+.vault-list {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #c4d1c9;
+}
+
+.vault-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.vault-header .eyebrow {
+  margin-bottom: 18px;
+}
+
+.logout-button {
+  min-height: 38px;
+  margin-top: 0;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid #39705c;
+  color: #235746;
+  font-size: 0.75rem;
+}
+
+.logout-button:hover:not(:disabled) {
+  background: #e8f0ed;
+  color: #173b32;
+}
+
+.empty-vault {
+  margin: 32px 0 0;
+  padding: 24px 16px;
+  border: 1px dashed #aebeb6;
+  color: #53645d;
+  font-family: 'Trebuchet MS', sans-serif;
+  text-align: center;
+}
+
+.vault-list h2 {
+  margin: 0 0 16px;
+  color: #173b32;
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+.vault-item {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid #c4d1c9;
+  background: #f7faf6;
+  font-family: 'Trebuchet MS', sans-serif;
+}
+
+.vault-item h3 {
+  margin: 0 0 12px;
+  color: #235746;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.15rem;
+}
+
+.vault-item dl {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.35fr) 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.vault-item dt {
+  color: #53645d;
+  font-weight: 700;
+}
+
+.vault-item dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vault-item > p:not(.status) {
+  margin: 14px 0 0;
+  color: #53645d;
+  line-height: 1.5;
+}
+
+.vault-item .status {
+  margin: 0;
+}
+
 @media (max-width: 520px) {
   .auth-page {
     padding: 20px 14px;

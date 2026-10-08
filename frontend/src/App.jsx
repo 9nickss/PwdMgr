@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { deriveMasterKey, exportRawKey, generateSalt, splitMasterKey } from './crypto';
+import {
+  decryptEntry,
+  deriveMasterKey,
+  exportRawKey,
+  generateSalt,
+  splitMasterKey,
+  unwrapKey
+} from './crypto';
 import './App.css';
 
 const apiBaseUrl = import.meta.env.VITE_API_URL || '';
@@ -14,6 +21,18 @@ function bytesToBase64(bytes) {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
+}
+
+function parseEncryptedField(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 function generateRecoveryPhrase() {
@@ -56,7 +75,7 @@ async function loginUser(email, password) {
 
   const salt = Uint8Array.from(atob(saltResult.salt), (character) => character.charCodeAt(0));
   const masterKey = await deriveMasterKey(password, salt);
-  const { authKey } = await splitMasterKey(masterKey, salt);
+  const { authKey, localKey } = await splitMasterKey(masterKey, salt);
   const authHash = bytesToBase64(new Uint8Array(await exportRawKey(authKey)));
   const response = await fetch(`${apiBaseUrl}/auth/login`, {
     method: 'POST',
@@ -69,7 +88,70 @@ async function loginUser(email, password) {
     throw new Error(result.error || 'Login failed');
   }
 
-  return result.token;
+  return { token: result.token, localKey };
+}
+
+async function fetchVaultItems(token, localKey) {
+  const response = await fetch(`${apiBaseUrl}/vault`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || 'Unable to load the vault');
+  }
+
+  return Promise.all(result.items.map(async (item) => {
+    try {
+      const wrappedKey = parseEncryptedField(item.vault_key_wrapped);
+      const encryptedBlob = parseEncryptedField(item.encrypted_blob);
+      const vaultKey = await unwrapKey(wrappedKey, localKey);
+      const payload = await decryptEntry(encryptedBlob, vaultKey);
+      return { ...item, payload, decryptError: false };
+    } catch {
+      return { ...item, payload: null, decryptError: true };
+    }
+  }));
+}
+
+function VaultView({ items, onLogout }) {
+  return (
+    <main className="auth-page">
+      <section className="auth-panel vault-panel" aria-labelledby="vault-title">
+        <div className="vault-header">
+          <div>
+            <p className="eyebrow">SecureVault</p>
+            <h1 id="vault-title">Votre coffre</h1>
+          </div>
+          <button type="button" className="logout-button" onClick={onLogout}>Se déconnecter</button>
+        </div>
+
+        {items.length === 0 ? (
+          <p className="empty-vault">Votre coffre est vide pour le moment.</p>
+        ) : (
+          <section className="vault-list" aria-label="Entrées du coffre">
+            {items.map((item) => (
+              <article className="vault-item" key={item.id}>
+                {item.decryptError ? (
+                  <p className="status error">Cette entrée ne peut pas être déchiffrée avec cette clé.</p>
+                ) : (
+                  <>
+                    <h3>{item.payload.title || 'Entrée sans titre'}</h3>
+                    <dl>
+                      <dt>Identifiant</dt>
+                      <dd>{item.payload.username || 'Non renseigné'}</dd>
+                      <dt>Mot de passe</dt>
+                      <dd>{item.payload.password || 'Non renseigné'}</dd>
+                    </dl>
+                    {item.payload.notes && <p>{item.payload.notes}</p>}
+                  </>
+                )}
+              </article>
+            ))}
+          </section>
+        )}
+      </section>
+    </main>
+  );
 }
 
 function App() {
@@ -78,6 +160,8 @@ function App() {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [recoveryPhrase, setRecoveryPhrase] = useState('');
+  const [vaultItems, setVaultItems] = useState([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -98,8 +182,10 @@ function App() {
         setRecoveryPhrase(generateRecoveryPhrase());
         setStatus({ type: 'success', message: 'Compte créé. Notez votre phrase de récupération avant de continuer.' });
       } else {
-        const token = await loginUser(normalizedEmail, password);
+        const { token, localKey } = await loginUser(normalizedEmail, password);
         localStorage.setItem('securevault_token', token);
+        setVaultItems(await fetchVaultItems(token, localKey));
+        setIsAuthenticated(true);
         setStatus({ type: 'success', message: 'Connexion réussie.' });
       }
       setPassword('');
@@ -109,6 +195,20 @@ function App() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (isAuthenticated) {
+    return (
+      <VaultView
+        items={vaultItems}
+        onLogout={() => {
+          localStorage.removeItem('securevault_token');
+          setVaultItems([]);
+          setIsAuthenticated(false);
+          setMode('login');
+        }}
+      />
+    );
   }
 
   return (
