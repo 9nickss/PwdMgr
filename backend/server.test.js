@@ -23,9 +23,12 @@ function request(options, body) {
     const request = http.request(
       {
         ...options,
-        method: 'POST',
-        path: '/auth/login',
-        headers: { 'content-type': 'application/json' }
+        method: options.method || 'POST',
+        path: options.path || '/auth/login',
+        headers: {
+          'content-type': 'application/json',
+          ...options.headers
+        }
       },
       (response) => {
         let responseBody = '';
@@ -107,4 +110,72 @@ test('POST /auth/login rejects an invalid auth proof', async (t) => {
 
   assert.equal(response.statusCode, 401);
   assert.deepStrictEqual(response.body, { error: 'Invalid credentials' });
+});
+
+test('vault routes reject requests without a JWT', async (t) => {
+  const server = app.listen(0);
+  t.after(() => server.close());
+  const address = server.address();
+  const response = await request({
+    host: '127.0.0.1',
+    port: address.port,
+    method: 'GET',
+    path: '/vault'
+  });
+
+  assert.equal(response.statusCode, 401);
+  assert.deepStrictEqual(response.body, { error: 'Authentication required' });
+});
+
+test('POST /vault stores an encrypted item for the authenticated user', async (t) => {
+  const token = jwt.sign(
+    { sub: 'user-id', email: 'alice@example.com' },
+    process.env.JWT_SECRET || 'securevault-development-secret'
+  );
+  const originalQuery = pool.query;
+  pool.query = async (query, values) => {
+    assert.match(query, /INSERT INTO vault_items/);
+    assert.deepStrictEqual(values, [
+      'user-id',
+      'encrypted-data',
+      'nonce-value',
+      'tag-value',
+      'wrapped-vault-key'
+    ]);
+    return {
+      rowCount: 1,
+      rows: [{
+        id: 'item-id',
+        encrypted_blob: 'encrypted-data',
+        nonce: 'nonce-value',
+        tag: 'tag-value',
+        vault_key_wrapped: 'wrapped-vault-key'
+      }]
+    };
+  };
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const server = app.listen(0);
+  t.after(() => server.close());
+  const address = server.address();
+  const response = await request(
+    {
+      host: '127.0.0.1',
+      port: address.port,
+      method: 'POST',
+      path: '/vault',
+      headers: { authorization: `Bearer ${token}` }
+    },
+    {
+      encryptedBlob: 'encrypted-data',
+      nonce: 'nonce-value',
+      tag: 'tag-value',
+      vaultKeyWrapped: 'wrapped-vault-key'
+    }
+  );
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.body.item.id, 'item-id');
 });
