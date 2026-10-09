@@ -205,7 +205,6 @@ sudo docker compose up -d
 ## Documentation complementaire
 
 - [Schema PostgreSQL](docs/schema.md)
-- [Fiche de defense](docs/defense.md)
 
 ## Licence
 
