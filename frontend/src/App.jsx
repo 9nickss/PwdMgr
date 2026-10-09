@@ -4,6 +4,10 @@ import {
   deriveMasterKey,
   exportRawKey,
   encryptEntry,
+  encryptPrivateKey,
+  exportEcdhPrivateKey,
+  exportEcdhPublicKey,
+  generateEcdhKeyPair,
   generateSalt,
   generateVaultKey,
   splitMasterKey,
@@ -46,8 +50,12 @@ function generateRecoveryPhrase() {
 async function registerUser(email, password) {
   const salt = await generateSalt();
   const masterKey = await deriveMasterKey(password, salt);
-  const { authKey } = await splitMasterKey(masterKey, salt);
+  const { authKey, localKey } = await splitMasterKey(masterKey, salt);
   const authHash = bytesToBase64(new Uint8Array(await exportRawKey(authKey)));
+  const keyPair = await generateEcdhKeyPair();
+  const publicKey = await exportEcdhPublicKey(keyPair.publicKey);
+  const privateKey = await exportEcdhPrivateKey(keyPair.privateKey);
+  const encryptedPrivateKey = await encryptPrivateKey(privateKey, localKey);
 
   const response = await fetch(`${apiBaseUrl}/auth/register`, {
     method: 'POST',
@@ -55,7 +63,8 @@ async function registerUser(email, password) {
     body: JSON.stringify({
       email,
       salt: bytesToBase64(salt),
-      authHash
+      authHash,
+      publicKey: JSON.stringify(publicKey)
     })
   });
 
@@ -64,6 +73,10 @@ async function registerUser(email, password) {
     throw new Error(result.error || 'Registration failed');
   }
 
+  localStorage.setItem(
+    `securevault_ecdh_private_key:${email}`,
+    JSON.stringify(encryptedPrivateKey)
+  );
   return result;
 }
 

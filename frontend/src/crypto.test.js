@@ -8,7 +8,11 @@ import {
   wrapKey,
   unwrapKey,
   deriveMasterKey,
+  encryptPrivateKey,
+  exportEcdhPrivateKey,
+  exportEcdhPublicKey,
   generateSalt,
+  generateEcdhKeyPair,
   splitMasterKey,
   exportRawKey
 } from './crypto.js';
@@ -86,4 +90,21 @@ test('wrapKey/unwrapKey should protect and restore the Vault Key', async () => {
     () => unwrapKey(wrappedVaultKey, wrongLocalKey),
     /OperationError|decrypt/
   );
+});
+
+test('generateEcdhKeyPair should expose the public key and encrypt the private key', async () => {
+  const keyPair = await generateEcdhKeyPair();
+  const publicKey = await exportEcdhPublicKey(keyPair.publicKey);
+  const privateKey = await exportEcdhPrivateKey(keyPair.privateKey);
+  const salt = await generateSalt();
+  const masterKey = await deriveMasterKey('master-password', salt, 1);
+  const { localKey } = await splitMasterKey(masterKey, salt);
+  const encryptedPrivateKey = await encryptPrivateKey(privateKey, localKey);
+
+  assert.equal(publicKey.kty, 'EC');
+  assert.equal(publicKey.crv, 'P-256');
+  assert.equal(privateKey.kty, 'EC');
+  assert.ok(Array.isArray(encryptedPrivateKey.iv));
+  assert.ok(Array.isArray(encryptedPrivateKey.ciphertext));
+  assert.notEqual(JSON.stringify(encryptedPrivateKey), JSON.stringify(privateKey));
 });

@@ -82,6 +82,36 @@ export async function generateVaultKey() {
   );
 }
 
+export async function generateEcdhKeyPair() {
+  return await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveKey', 'deriveBits']
+  );
+}
+
+export async function exportEcdhPublicKey(key) {
+  return await crypto.subtle.exportKey('jwk', key);
+}
+
+export async function exportEcdhPrivateKey(key) {
+  return await crypto.subtle.exportKey('jwk', key);
+}
+
+export async function encryptPrivateKey(privateKeyJwk, localKey) {
+  const plaintext = new TextEncoder().encode(JSON.stringify(privateKeyJwk));
+  const iv = await crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    localKey,
+    plaintext
+  );
+  return {
+    iv: Array.from(iv),
+    ciphertext: Array.from(new Uint8Array(ciphertext))
+  };
+}
+
 export async function encryptEntry(plaintextObject, vaultKey) {
   const encoder = new TextEncoder();
   const plaintext = encoder.encode(JSON.stringify(plaintextObject));
