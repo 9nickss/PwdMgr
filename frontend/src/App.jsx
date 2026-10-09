@@ -167,6 +167,28 @@ async function fetchSharedItems(token, privateKey) {
   }));
 }
 
+async function fetchOwnedShares(token) {
+  const response = await fetch(`${apiBaseUrl}/sharing/by-me`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || 'Unable to load shared users');
+  }
+  return result.shares;
+}
+
+async function revokeShare(token, itemId, userId) {
+  const response = await fetch(`${apiBaseUrl}/sharing/${itemId}/${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    throw new Error(result.error || 'Unable to revoke sharing');
+  }
+}
+
 async function shareVaultItem(token, privateKey, localKey, item, recipientEmail) {
   const publicKeyResponse = await fetch(
     `${apiBaseUrl}/auth/public-key/${encodeURIComponent(recipientEmail)}`
@@ -351,11 +373,13 @@ function SharedItems({ items }) {
   );
 }
 
-function VaultView({ items, sharedItems, onLogout, onSave, onDelete, onShare, isSaving }) {
+function VaultView({ items, sharedItems, ownedShares, onLogout, onSave, onDelete, onShare, onRevoke, isSaving }) {
   const [editingItem, setEditingItem] = useState(false);
   const [sharingItem, setSharingItem] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [isRevoking, setIsRevoking] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [revokeError, setRevokeError] = useState('');
   const [visibleCredentials, setVisibleCredentials] = useState({});
 
   function toggleCredentials(itemId) {
@@ -379,6 +403,7 @@ function VaultView({ items, sharedItems, onLogout, onSave, onDelete, onShare, is
           + Nouvelle entrée
         </button>
         {deleteError && <p className="status error" role="alert">{deleteError}</p>}
+        {revokeError && <p className="status error" role="alert">{revokeError}</p>}
 
         {editingItem !== false && (
           <EntryForm
@@ -438,6 +463,32 @@ function VaultView({ items, sharedItems, onLogout, onSave, onDelete, onShare, is
                     </button>
                   </div>
                 )}
+                {ownedShares.filter((share) => share.item_id === item.id).map((share) => (
+                  <div className="share-row" key={share.id}>
+                    <span>Partagée avec {share.shared_with_email}</span>
+                    <button
+                      type="button"
+                      className="revoke-button"
+                      disabled={isRevoking}
+                      onClick={async () => {
+                        if (!window.confirm(`Ne plus partager avec ${share.shared_with_email} ?`)) {
+                          return;
+                        }
+                        setRevokeError('');
+                        setIsRevoking(true);
+                        try {
+                          await onRevoke(share);
+                        } catch (error) {
+                          setRevokeError(error.message);
+                        } finally {
+                          setIsRevoking(false);
+                        }
+                      }}
+                    >
+                      Ne plus partager
+                    </button>
+                  </div>
+                ))}
                 <button
                   type="button"
                   className="delete-button"
@@ -490,6 +541,7 @@ function App() {
   const [recoveryPhrase, setRecoveryPhrase] = useState('');
   const [vaultItems, setVaultItems] = useState([]);
   const [sharedItems, setSharedItems] = useState([]);
+  const [ownedShares, setOwnedShares] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [session, setSession] = useState(null);
   const [status, setStatus] = useState({ type: '', message: '' });
@@ -516,6 +568,7 @@ function App() {
         localStorage.setItem('securevault_token', token);
         setVaultItems(await fetchVaultItems(token, localKey));
         setSharedItems(await fetchSharedItems(token, privateKey));
+        setOwnedShares(await fetchOwnedShares(token));
         setSession({ token, localKey, privateKey });
         setIsAuthenticated(true);
         setStatus({ type: 'success', message: 'Connexion réussie.' });
@@ -534,6 +587,7 @@ function App() {
       <VaultView
         items={vaultItems}
         sharedItems={sharedItems}
+        ownedShares={ownedShares}
         isSaving={isSubmitting}
         onSave={async (data, itemId) => {
           setIsSubmitting(true);
@@ -561,18 +615,26 @@ function App() {
           }
         }}
         onShare={async (item, recipientEmail) => {
-          await shareVaultItem(
+          const share = await shareVaultItem(
             session.token,
             session.privateKey,
             session.localKey,
             item,
             recipientEmail
           );
+          const shares = await fetchOwnedShares(session.token);
+          setOwnedShares(shares);
+          return share;
+        }}
+        onRevoke={async (share) => {
+          await revokeShare(session.token, share.item_id, share.shared_with_user_id);
+          setOwnedShares((current) => current.filter((item) => item.id !== share.id));
         }}
         onLogout={() => {
           localStorage.removeItem('securevault_token');
           setVaultItems([]);
           setSharedItems([]);
+          setOwnedShares([]);
           setSession(null);
           setIsAuthenticated(false);
           setMode('login');

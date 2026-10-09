@@ -369,6 +369,33 @@ textarea:focus {
   margin-top: 0;
 }
 
+.share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #d7e3dc;
+  color: #53645d;
+  font-size: 0.8rem;
+}
+
+.revoke-button {
+  min-height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid #a14e3f;
+  background: transparent;
+  color: #76392e;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.revoke-button:hover:not(:disabled) {
+  background: #f7e8e3;
+}
+
 .shared-list {
   margin-top: 36px;
 }

@@ -424,6 +424,26 @@ app.post('/sharing/:itemId', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/sharing/by-me', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT shares.id, shares.item_id, shares.shared_with_user_id,
+              shares.created_at, users.email AS shared_with_email
+       FROM shares
+       JOIN users ON users.id = shares.shared_with_user_id
+       JOIN vault_items ON vault_items.id = shares.item_id
+       WHERE vault_items.user_id = $1
+       ORDER BY shares.created_at DESC`,
+      [req.user.sub]
+    );
+
+    res.json({ shares: result.rows });
+  } catch (error) {
+    console.error('Failed to retrieve created shares:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/sharing/with-me', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
