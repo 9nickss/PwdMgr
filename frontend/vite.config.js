@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/auth': process.env.VITE_BACKEND_URL || 'http://localhost:3000',
-      '/vault': process.env.VITE_BACKEND_URL || 'http://localhost:3000'
+      '/vault': process.env.VITE_BACKEND_URL || 'http://localhost:3000',
+      '/sharing': process.env.VITE_BACKEND_URL || 'http://localhost:3000'
     }
   }
 });

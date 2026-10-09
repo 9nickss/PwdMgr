@@ -123,6 +123,38 @@ app.get('/auth/salt/:email', async (req, res) => {
   }
 });
 
+app.get('/auth/public-key/:email', async (req, res) => {
+  const email = normalizeEmail(req.params.email);
+
+  if (!email) {
+    res.status(400).json({ error: 'A valid email is required' });
+    return;
+  }
+
+  try {
+    const result = await pool.query(
+      'SELECT id, email, public_key FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    res.json({
+      user: {
+        id: result.rows[0].id,
+        email: result.rows[0].email,
+        publicKey: result.rows[0].public_key
+      }
+    });
+  } catch (error) {
+    console.error('Failed to retrieve public key:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/auth/register', async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const { email: rawEmail, authHash, salt, publicKey } = body;
@@ -327,6 +359,118 @@ app.delete('/vault/:id', authenticateToken, async (req, res) => {
       return;
     }
     console.error('Failed to delete vault item:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/sharing/:itemId', authenticateToken, async (req, res) => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const sharedWithEmail = normalizeEmail(body.sharedWithEmail || body.email);
+  const encryptedVaultKey = body.encryptedVaultKeyForSharedUser
+    || body.encrypted_vault_key_for_shared_user;
+
+  if (!sharedWithEmail || typeof encryptedVaultKey !== 'string' || !encryptedVaultKey) {
+    res.status(400).json({
+      error: 'sharedWithEmail and encryptedVaultKeyForSharedUser are required'
+    });
+    return;
+  }
+
+  try {
+    const recipientResult = await pool.query(
+      'SELECT id, email, public_key FROM users WHERE email = $1',
+      [sharedWithEmail]
+    );
+    if (recipientResult.rowCount === 0) {
+      res.status(404).json({ error: 'Recipient user not found' });
+      return;
+    }
+
+    const itemResult = await pool.query(
+      'SELECT id FROM vault_items WHERE id = $1 AND user_id = $2',
+      [req.params.itemId, req.user.sub]
+    );
+    if (itemResult.rowCount === 0) {
+      res.status(404).json({ error: 'Vault item not found' });
+      return;
+    }
+
+    const result = await pool.query(
+      `INSERT INTO shares (item_id, shared_with_user_id, encrypted_vault_key_for_shared_user)
+       VALUES ($1, $2, $3)
+       RETURNING id, item_id, shared_with_user_id, encrypted_vault_key_for_shared_user, created_at`,
+      [req.params.itemId, recipientResult.rows[0].id, encryptedVaultKey]
+    );
+
+    res.status(201).json({
+      share: result.rows[0],
+      recipient: {
+        id: recipientResult.rows[0].id,
+        email: recipientResult.rows[0].email,
+        publicKey: recipientResult.rows[0].public_key
+      }
+    });
+  } catch (error) {
+    if (error.code === '23505') {
+      res.status(409).json({ error: 'This item is already shared with that user' });
+      return;
+    }
+    if (error.code === '22P02') {
+      res.status(404).json({ error: 'Vault item not found' });
+      return;
+    }
+    console.error('Failed to create vault share:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/sharing/with-me', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT shares.id, shares.item_id, shares.shared_with_user_id,
+              shares.encrypted_vault_key_for_shared_user, shares.created_at,
+              vault_items.encrypted_blob, vault_items.nonce, vault_items.tag,
+              users.email AS owner_email, users.public_key AS owner_public_key
+       FROM shares
+       JOIN vault_items ON vault_items.id = shares.item_id
+       JOIN users ON users.id = vault_items.user_id
+       WHERE shares.shared_with_user_id = $1
+       ORDER BY shares.created_at DESC`,
+      [req.user.sub]
+    );
+
+    res.json({ shares: result.rows });
+  } catch (error) {
+    console.error('Failed to retrieve received shares:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.delete('/sharing/:itemId/:userId', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM shares
+       WHERE item_id = $1
+         AND shared_with_user_id = $2
+         AND item_id IN (
+           SELECT id FROM vault_items WHERE id = $1 AND user_id = $3
+         )
+       RETURNING id`,
+      [req.params.itemId, req.params.userId, req.user.sub]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Share not found' });
+      return;
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    if (error.code === '22P02') {
+      res.status(404).json({ error: 'Share not found' });
+      return;
+    }
+    console.error('Failed to delete vault share:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

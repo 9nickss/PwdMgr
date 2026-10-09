@@ -358,6 +358,45 @@ textarea:focus {
   margin: 0;
 }
 
+.item-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.item-actions button {
+  flex: 1;
+  margin-top: 0;
+}
+
+.shared-list {
+  margin-top: 36px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(23 59 50 / 35%);
+}
+
+.share-modal {
+  width: min(100%, 420px);
+  padding: 28px;
+  border: 1px solid #c4d1c9;
+  background: #fffdf8;
+  box-shadow: 8px 8px 0 #adc2b7;
+}
+
+.share-modal h2 {
+  margin: 0 0 20px;
+  color: #173b32;
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
 @media (max-width: 520px) {
   .auth-page {
     padding: 20px 14px;

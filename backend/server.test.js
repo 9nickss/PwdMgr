@@ -179,3 +179,79 @@ test('POST /vault stores an encrypted item for the authenticated user', async (t
   assert.equal(response.statusCode, 201);
   assert.equal(response.body.item.id, 'item-id');
 });
+
+test('sharing routes reject requests without a JWT', async (t) => {
+  const server = app.listen(0);
+  t.after(() => server.close());
+  const address = server.address();
+  const response = await request({
+    host: '127.0.0.1',
+    port: address.port,
+    method: 'GET',
+    path: '/sharing/with-me'
+  });
+
+  assert.equal(response.statusCode, 401);
+  assert.deepStrictEqual(response.body, { error: 'Authentication required' });
+});
+
+test('POST /sharing/:itemId resolves the recipient and stores the wrapped key', async (t) => {
+  const token = jwt.sign(
+    { sub: 'owner-id', email: 'owner@example.com' },
+    process.env.JWT_SECRET || 'securevault-development-secret'
+  );
+  const originalQuery = pool.query;
+  let queryCount = 0;
+  pool.query = async (query, values) => {
+    queryCount += 1;
+    if (queryCount === 1) {
+      assert.match(query, /SELECT id, email, public_key FROM users/);
+      assert.deepStrictEqual(values, ['recipient@example.com']);
+      return {
+        rowCount: 1,
+        rows: [{ id: 'recipient-id', email: 'recipient@example.com', public_key: '{"kty":"EC"}' }]
+      };
+    }
+    if (queryCount === 2) {
+      assert.match(query, /SELECT id FROM vault_items/);
+      assert.deepStrictEqual(values, ['item-id', 'owner-id']);
+      return { rowCount: 1, rows: [{ id: 'item-id' }] };
+    }
+
+    assert.match(query, /INSERT INTO shares/);
+    assert.deepStrictEqual(values, ['item-id', 'recipient-id', '{"iv":[1],"wrappedKey":[2]}']);
+    return {
+      rowCount: 1,
+      rows: [{
+        id: 'share-id',
+        item_id: 'item-id',
+        shared_with_user_id: 'recipient-id',
+        encrypted_vault_key_for_shared_user: '{"iv":[1],"wrappedKey":[2]}'
+      }]
+    };
+  };
+  t.after(() => {
+    pool.query = originalQuery;
+  });
+
+  const server = app.listen(0);
+  t.after(() => server.close());
+  const address = server.address();
+  const response = await request(
+    {
+      host: '127.0.0.1',
+      port: address.port,
+      method: 'POST',
+      path: '/sharing/item-id',
+      headers: { authorization: `Bearer ${token}` }
+    },
+    {
+      sharedWithEmail: ' Recipient@Example.com ',
+      encryptedVaultKeyForSharedUser: '{"iv":[1],"wrappedKey":[2]}'
+    }
+  );
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.body.share.id, 'share-id');
+  assert.equal(response.body.recipient.publicKey, '{"kty":"EC"}');
+});

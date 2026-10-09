@@ -98,6 +98,82 @@ export async function exportEcdhPrivateKey(key) {
   return await crypto.subtle.exportKey('jwk', key);
 }
 
+export async function importEcdhPublicKey(keyJwk) {
+  return await crypto.subtle.importKey(
+    'jwk',
+    keyJwk,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    []
+  );
+}
+
+export async function importEcdhPrivateKey(keyJwk) {
+  return await crypto.subtle.importKey(
+    'jwk',
+    keyJwk,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveKey', 'deriveBits']
+  );
+}
+
+export async function deriveSharedKey(privateKey, publicKey) {
+  const sharedSecret = await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: publicKey },
+    privateKey,
+    256
+  );
+  const sharedSecretKey = await crypto.subtle.importKey(
+    'raw',
+    sharedSecret,
+    { name: 'HKDF' },
+    false,
+    ['deriveKey']
+  );
+  return await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(),
+      info: new TextEncoder().encode('VaultMgr-SharedKey')
+    },
+    sharedSecretKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+export async function wrapSharedKey(vaultKey, sharedKey) {
+  const vaultKeyBytes = await exportRawKey(vaultKey);
+  const iv = await crypto.getRandomValues(new Uint8Array(12));
+  const wrappedKey = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    sharedKey,
+    vaultKeyBytes
+  );
+  return {
+    iv: Array.from(iv),
+    wrappedKey: Array.from(new Uint8Array(wrappedKey))
+  };
+}
+
+export async function unwrapSharedKey(wrappedObject, sharedKey) {
+  const vaultKeyBytes = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: new Uint8Array(wrappedObject.iv) },
+    sharedKey,
+    new Uint8Array(wrappedObject.wrappedKey)
+  );
+  return await crypto.subtle.importKey(
+    'raw',
+    vaultKeyBytes,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+}
+
 export async function encryptPrivateKey(privateKeyJwk, localKey) {
   const plaintext = new TextEncoder().encode(JSON.stringify(privateKeyJwk));
   const iv = await crypto.getRandomValues(new Uint8Array(12));
@@ -110,6 +186,15 @@ export async function encryptPrivateKey(privateKeyJwk, localKey) {
     iv: Array.from(iv),
     ciphertext: Array.from(new Uint8Array(ciphertext))
   };
+}
+
+export async function decryptPrivateKey(encryptedPrivateKey, localKey) {
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: new Uint8Array(encryptedPrivateKey.iv) },
+    localKey,
+    new Uint8Array(encryptedPrivateKey.ciphertext)
+  );
+  return JSON.parse(new TextDecoder().decode(plaintext));
 }
 
 export async function encryptEntry(plaintextObject, vaultKey) {
