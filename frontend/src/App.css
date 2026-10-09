@@ -358,6 +358,72 @@ textarea:focus {
   margin: 0;
 }
 
+.item-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.item-actions button {
+  flex: 1;
+  margin-top: 0;
+}
+
+.share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #d7e3dc;
+  color: #53645d;
+  font-size: 0.8rem;
+}
+
+.revoke-button {
+  min-height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid #a14e3f;
+  background: transparent;
+  color: #76392e;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.revoke-button:hover:not(:disabled) {
+  background: #f7e8e3;
+}
+
+.shared-list {
+  margin-top: 36px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(23 59 50 / 35%);
+}
+
+.share-modal {
+  width: min(100%, 420px);
+  padding: 28px;
+  border: 1px solid #c4d1c9;
+  background: #fffdf8;
+  box-shadow: 8px 8px 0 #adc2b7;
+}
+
+.share-modal h2 {
+  margin: 0 0 20px;
+  color: #173b32;
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
 @media (max-width: 520px) {
   .auth-page {
     padding: 20px 14px;

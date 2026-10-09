@@ -8,9 +8,18 @@ import {
   wrapKey,
   unwrapKey,
   deriveMasterKey,
+  encryptPrivateKey,
+  exportEcdhPrivateKey,
+  exportEcdhPublicKey,
+  importEcdhPrivateKey,
+  importEcdhPublicKey,
+  deriveSharedKey,
   generateSalt,
+  generateEcdhKeyPair,
   splitMasterKey,
-  exportRawKey
+  exportRawKey,
+  unwrapSharedKey,
+  wrapSharedKey
 } from './crypto.js';
 
 test('encryptEntry/decryptEntry round-trip should preserve JSON payload and validate integrity', async () => {
@@ -84,6 +93,65 @@ test('wrapKey/unwrapKey should protect and restore the Vault Key', async () => {
   );
   await assert.rejects(
     () => unwrapKey(wrappedVaultKey, wrongLocalKey),
+    /OperationError|decrypt/
+  );
+});
+
+test('generateEcdhKeyPair should expose the public key and encrypt the private key', async () => {
+  const keyPair = await generateEcdhKeyPair();
+  const publicKey = await exportEcdhPublicKey(keyPair.publicKey);
+  const privateKey = await exportEcdhPrivateKey(keyPair.privateKey);
+  const salt = await generateSalt();
+  const masterKey = await deriveMasterKey('master-password', salt, 1);
+  const { localKey } = await splitMasterKey(masterKey, salt);
+  const encryptedPrivateKey = await encryptPrivateKey(privateKey, localKey);
+
+  assert.equal(publicKey.kty, 'EC');
+  assert.equal(publicKey.crv, 'P-256');
+  assert.equal(privateKey.kty, 'EC');
+  assert.ok(Array.isArray(encryptedPrivateKey.iv));
+  assert.ok(Array.isArray(encryptedPrivateKey.ciphertext));
+  assert.notEqual(JSON.stringify(encryptedPrivateKey), JSON.stringify(privateKey));
+});
+
+test('ECDH shared keys should wrap and restore a Vault Key for the recipient', async () => {
+  const sender = await generateEcdhKeyPair();
+  const recipient = await generateEcdhKeyPair();
+  const senderPrivateKey = await importEcdhPrivateKey(
+    await exportEcdhPrivateKey(sender.privateKey)
+  );
+  const senderRecipientPublicKey = await importEcdhPublicKey(
+    await exportEcdhPublicKey(recipient.publicKey)
+  );
+  const recipientPrivateKey = await importEcdhPrivateKey(
+    await exportEcdhPrivateKey(recipient.privateKey)
+  );
+  const recipientSenderPublicKey = await importEcdhPublicKey(
+    await exportEcdhPublicKey(sender.publicKey)
+  );
+  const senderSharedKey = await deriveSharedKey(
+    senderPrivateKey,
+    senderRecipientPublicKey
+  );
+  const recipientSharedKey = await deriveSharedKey(
+    recipientPrivateKey,
+    recipientSenderPublicKey
+  );
+  const vaultKey = await generateVaultKey();
+  const wrappedKey = await wrapSharedKey(vaultKey, senderSharedKey);
+  const restoredKey = await unwrapSharedKey(wrappedKey, recipientSharedKey);
+
+  assert.deepStrictEqual(
+    Array.from(await exportRawKey(restoredKey)),
+    Array.from(await exportRawKey(vaultKey))
+  );
+  const wrongUser = await generateEcdhKeyPair();
+  const wrongSharedKey = await deriveSharedKey(
+    await importEcdhPrivateKey(await exportEcdhPrivateKey(wrongUser.privateKey)),
+    recipientSenderPublicKey
+  );
+  await assert.rejects(
+    () => unwrapSharedKey(wrappedKey, wrongSharedKey),
     /OperationError|decrypt/
   );
 });
